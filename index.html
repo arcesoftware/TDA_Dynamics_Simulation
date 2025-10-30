@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tri-Sphere TDA Dynamics — with Inline GUI</title>
+<!-- Three.js via CDN (still allowed) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --glass-bg: rgba(12,14,20,0.56);
+    --glass-border: rgba(255,255,255,0.06);
+    --accent: #7c3aed;
+    --muted: rgba(209,213,219,0.85);
+    --hint: #facc15;
+  }
+  html,body{height:100%;margin:0;background:#0a0a10;font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;}
+  #simulation-container{width:100vw;height:100vh;position:relative;overflow:hidden;background:linear-gradient(180deg,#05050a,#0b0b13);}
+  /* Info panel (left) */
+  .info-panel{
+    position:absolute; left:12px; top:12px; z-index:20;
+    background:var(--glass-bg);
+    border:1px solid var(--glass-border);
+    backdrop-filter: blur(6px) saturate(110%);
+    color:var(--muted);
+    padding:12px 14px;
+    border-radius:10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    width:260px;
+  }
+  .info-panel h1{margin:0 0 6px 0;font-size:15px;color:#fff}
+  .info-panel p{margin:6px 0;font-size:13px}
+  .info-panel .hint{color:var(--hint);font-weight:600}
+  /* GUI (right) - modern dark glass style */
+  #gui {
+    position:absolute; right:12px; top:12px; z-index:21;
+    width:260px; padding:12px; border-radius:10px;
+    background:linear-gradient(180deg, rgba(20,22,30,0.68), rgba(8,9,12,0.6));
+    border:1px solid rgba(255,255,255,0.04);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+    color:var(--muted);
+    backdrop-filter: blur(8px) saturate(120%);
+    font-size:13px;
+  }
+  #gui h2{margin:0 0 8px 0;color:#fff;font-size:14px}
+  .gui-row{display:flex;align-items:center;justify-content:space-between;margin:8px 0;}
+  .gui-row label{flex:1; margin-right:8px}
+  .gui-control{flex:1; display:flex; gap:8px; align-items:center;}
+  .toggle {
+    width:44px;height:24px;border-radius:14px;background:rgba(255,255,255,0.06);position:relative;cursor:pointer;
+    transition:all 150ms ease;
+    box-shadow: inset 0 -2px 6px rgba(0,0,0,0.5);
+  }
+  .toggle .knob{position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:12px;background:#fff;transition:left 160ms ease, background 160ms;}
+  .toggle.on{background:linear-gradient(90deg,var(--accent),#06b6d4);}
+  .toggle.on .knob{left:23px;background:#fff;}
+  .btn {
+    background:linear-gradient(180deg,#111217,#14161c); border:1px solid rgba(255,255,255,0.04);
+    color:var(--muted); padding:8px 10px; border-radius:8px; cursor:pointer;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+  }
+  .btn.primary { background: linear-gradient(180deg,var(--accent), #5b21b6); color:#fff; border: none;}
+  .small {font-size:12px;padding:6px 8px}
+  input[type="range"] { width:100%; }
+  .muted { color: rgba(209,213,219,0.7); font-size:12px;}
+  .footer-note { position:absolute; left:12px; bottom:10px; color:rgba(209,213,219,0.5); font-size:12px; z-index:20;}
+  /* small responsive */
+  @media (max-width:640px){
+    #gui{ width:86%; left:7%; right:7%; top:auto; bottom:12px; }
+    .info-panel{ width:86%; left:7%; top:12px; }
+  }
+</style>
+<div id="simulation-container">
+  <div class="info-panel" aria-hidden="false">
+    <h1>Tri-Sphere TDA Dynamics</h1>
+    <p>Particles: <strong id="nParticles">1200</strong></p>
+    <p>Target neighbors (k): <strong id="kNeighbors">4</strong></p>
+    <p class="muted">Use mouse drag to rotate; scroll to zoom. Open console to see Poincaré logs.</p>
+    <p class="hint">Tip: press <strong>Ctrl+G</strong> to center view</p>
+  </div>
+
+  <!-- GUI -->
+  <div id="gui" role="region" aria-label="Simulation controls">
+    <h2>Controls</h2>
+
+    <div class="gui-row">
+      <label>Show Sphere Centers</label>
+      <div id="toggle-centers" class="toggle" title="Show sphere centers"><div class="knob"></div></div>
+    </div>
+
+    <div class="gui-row">
+      <label>Auto Orbit Camera</label>
+      <div id="toggle-orbit" class="toggle" title="Auto orbit camera"><div class="knob"></div></div>
+    </div>
+
+    <div style="margin-top:8px;">
+      <label style="display:block;margin-bottom:6px">Particle Count <span id="pc-val" style="float:right;color:#fff">1200</span></label>
+      <input id="particle-range" type="range" min="200" max="2400" step="100" value="1200">
+    </div>
+
+    <div style="margin-top:10px; display:flex; gap:8px;">
+      <button id="apply-count" class="btn small">Apply</button>
+      <button id="reset-sim" class="btn small">Reset</button>
+      <button id="center-view" class="btn small">Center</button>
+    </div>
+
+    <div style="margin-top:12px; font-size:12px; color:rgba(209,213,219,0.6)">
+      <div>Performance: default 1200 particles (change with slider)</div>
+    </div>
+  </div>
+
+  <div class="footer-note">Self-contained — ready for GitHub Pages</div>
+</div>
+
+<script>
+/* ----------------------------
+   Tri-Sphere TDA Dynamics
+   Single-file with inline GUI (modern dark style)
+   ---------------------------- */
+
+/* --- Simulation parameters (default reduced for performance) --- */
+let PARTICLE_COUNT = 1200; // default as requested
+const K_NEIGHBORS = 4;     // constant
+const DDG_RADIUS = 30.0;
+const DDG_SPRING_K = 150.0;
+const TDA_CLUSTER_RADIUS = 150.0;
+const TDA_RESTORE_FORCE = 700.0;
+const TDA_DAMPING = 0.618033989;
+const TDA_BETAONE_THRESHOLD = 2;
+const TDA_BETAONE_FORCEK = 300.0;
+const BETAONE_PARTICLE_RATIO = 0.01;
+const SPHERE_RADIUS = 120.0;
+const SPRING_STRENGTH = 22.0;
+const SPIRO_R = 180.0, SPIRO_K = 0.531, SPIRO_L = 0.854, SPIRO_SPEED = 0.8;
+const REPULSION_K = 120.0, REPULSION_DIST_CHECK = 300.0;
+const LOG_INTERVAL = 5.0; // seconds
+
+/* --- runtime state --- */
+const NUM_SPHERES = 3;
+let simData = null; // will be created by createSimData(count)
+let scene, camera, renderer, particleSystem, particlesGeometry, particlesMaterial;
+let prevTime = performance.now() / 1000;
+let timeAccumulator = 0;
+let logTimer = 0;
+let autoOrbit = false;
+let showCenters = false;
+let cameraTarget = new THREE.Vector3(0,0,0);
+let azimuth = 0.6, elevation = 0.2, distanceCam = 700;
+let dragging = false, lastX=0, lastY=0;
+let centerMarkers = []; // THREE.Mesh markers
+let orbitSpeed = 0.18; // degrees/sec roughly (rad/s)
+
+/* --- small spatial hash & union-find utilities (same approach as earlier) --- */
+class SpatialHash {
+  constructor(particles, maxRadius){
+    this.Grid = new Map();
+    this.CellSize = maxRadius;
+    this.InvCellSize = 1.0 / maxRadius;
+    this.Update(particles);
+  }
+  HashIndex(pos){
+    const ix = Math.floor(pos.x * this.InvCellSize);
+    const iy = Math.floor(pos.y * this.InvCellSize);
+    const iz = Math.floor(pos.z * this.InvCellSize);
+    return ix * 73856093 + iy * 1934983 + iz * 83492791;
+  }
+  Update(particles){
+    this.Grid.clear();
+    for (let i=0;i<particles.length;i++){
+      const key = this.HashIndex(particles[i].Pos);
+      if (!this.Grid.has(key)) this.Grid.set(key, []);
+      this.Grid.get(key).push(i);
+    }
+  }
+  FindNeighborsSH(index,pos,data,radius){
+    const neighbors = [];
+    const radiusSq = radius*radius;
+    const ix0 = Math.floor(pos.x * this.InvCellSize);
+    const iy0 = Math.floor(pos.y * this.InvCellSize);
+    const iz0 = Math.floor(pos.z * this.InvCellSize);
+    for (let dx=-1; dx<=1; dx++){
+      for (let dy=-1; dy<=1; dy++){
+        for (let dz=-1; dz<=1; dz++){
+          const key = (ix0+dx) * 73856093 + (iy0+dy) * 1934983 + (iz0+dz) * 83492791;
+          if (!this.Grid.has(key)) continue;
+          const bucket = this.Grid.get(key);
+          for (const otherIndex of bucket){
+            if (otherIndex === index) continue;
+            const distSq = pos.distanceToSquared(data[otherIndex].Pos);
+            if (distSq < radiusSq) neighbors.push(otherIndex);
+          }
+        }
+      }
+    }
+    return neighbors;
+  }
+}
+
+class UnionFind {
+  constructor(n){ this.Parent = new Array(n).fill(0).map((_,i)=>i); this.Size=new Array(n).fill(1); }
+  Find(i){ if (this.Parent[i]===i) return i; this.Parent[i]=this.Find(this.Parent[i]); return this.Parent[i]; }
+  Union(i,j){ let a=this.Find(i), b=this.Find(j); if (a===b) return; if (this.Size[a]<this.Size[b]) [a,b]=[b,a]; this.Parent[b]=a; this.Size[a]+=this.Size[b]; }
+}
+
+/* --- createSimData(count) builds simData object and geometry --- */
+function createSimData(count){
+  const sd = {
+    Particles: [],
+    Coms: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
+    Beta0: [1,1,1],
+    Beta1: [0,0,0],
+    Connected: [true,true,true],
+    ParticleID: []
+  };
+  const initialCenter = new THREE.Vector3(0,0,0);
+  for (let i=0;i<count;i++){
+    const sphereID = i % NUM_SPHERES;
+    sd.ParticleID.push(sphereID);
+    let color = new THREE.Color(1.0,0.2,0.2); // red
+    if (sphereID===1) color = new THREE.Color(0.2,0.2,1.0);
+    if (sphereID===2) color = new THREE.Color(0.2,1.0,0.2);
+    const jitter = 5.0;
+    const dist = SPHERE_RADIUS + (Math.random()*2 - 1) * jitter;
+    const angle1 = Math.random() * Math.PI * 2;
+    const angle2 = Math.random() * Math.PI;
+    const posOffset = new THREE.Vector3(
+      dist * Math.cos(angle1) * Math.sin(angle2),
+      dist * Math.sin(angle1) * Math.sin(angle2),
+      dist * Math.cos(angle2)
+    );
+    sd.Particles.push({
+      Pos: initialCenter.clone().add(posOffset),
+      Vel: new THREE.Vector3((Math.random()*2-1)*2,(Math.random()*2-1)*2,(Math.random()*2-1)*2),
+      Col: color
+    });
+  }
+  return sd;
+}
+
+/* --- Setup Three.js scene + particle system --- */
+function buildScene(){
+  const container = document.getElementById('simulation-container');
+  // clear existing renderer if exists (recreate on restart)
+  if (renderer && renderer.domElement) {
+    try { container.removeChild(renderer.domElement); } catch(e){}
+  }
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  container.appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 5000);
+
+  window.addEventListener('resize', ()=> {
+    camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }, {passive:true});
+
+  // Points geometry
+  particlesGeometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(PARTICLE_COUNT * 3);
+  const colors = new Float32Array(PARTICLE_COUNT * 3);
+  particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions,3).setUsage(THREE.DynamicDrawUsage));
+  particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors,3).setUsage(THREE.DynamicDrawUsage));
+
+  particlesMaterial = new THREE.PointsMaterial({
+    size: 1.6,
+    vertexColors: true,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+
+  particleSystem = new THREE.Points(particlesGeometry, particlesMaterial);
+  scene.add(particleSystem);
+
+  // Clear and create center markers
+  for (const m of centerMarkers){
+    scene.remove(m);
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+  }
+  centerMarkers = [];
+  for (let i=0;i<NUM_SPHERES;i++){
+    const geo = new THREE.SphereGeometry(3,10,8);
+    const mat = new THREE.MeshBasicMaterial({ color: i===0?0xff4444 : (i===1?0x4444ff:0x44ff44), emissive:0xffffff, emissiveIntensity:0.6 });
+    const m = new THREE.Mesh(geo, mat);
+    m.visible = showCenters;
+    scene.add(m);
+    centerMarkers.push(m);
+  }
+
+  // update info
+  document.getElementById('nParticles').textContent = PARTICLE_COUNT;
+}
+
+/* --- Rebuild / Reset simulation --- */
+function resetSimulation(){
+  // create new simData and rebuild geometry/points
+  simData = createSimData(PARTICLE_COUNT);
+  buildScene();
+  // update buffers immediately
+  updateParticleBuffers();
+}
+
+/* --- Update particle GPU buffers from simData --- */
+function updateParticleBuffers(){
+  const posAttr = particlesGeometry.attributes.position.array;
+  const colAttr = particlesGeometry.attributes.color.array;
+  for (let i=0;i<PARTICLE_COUNT;i++){
+    const p = simData.Particles[i];
+    const idx = i*3;
+    posAttr[idx] = p.Pos.x; posAttr[idx+1]=p.Pos.y; posAttr[idx+2]=p.Pos.z;
+    colAttr[idx] = p.Col.r; colAttr[idx+1] = p.Col.g; colAttr[idx+2] = p.Col.b;
+  }
+  particlesGeometry.attributes.position.needsUpdate = true;
+  particlesGeometry.attributes.color.needsUpdate = true;
+}
+
+/* --- Spirograph center motion --- */
+function updateSphereCenters(dt){
+  timeAccumulator += dt;
+  const t = timeAccumulator * SPIRO_SPEED;
+  const R = SPIRO_R, k = SPIRO_K, l = SPIRO_L;
+  const ratioTerm = (1.0 - k) / k;
+  const term1_x = R * (1.0 - k) * Math.cos(t);
+  const term1_y = R * (1.0 - k) * Math.sin(t);
+  const term2_x = R * l * k * Math.cos(ratioTerm * t);
+  const term2_y = R * l * k * Math.sin(ratioTerm * t);
+  const x_base = term1_x + term2_x;
+  const y_base = term1_y - term2_y;
+  const z_osc1 = R * 0.2 * Math.sin(t * 0.5);
+  const z_osc2 = R * 0.2 * Math.cos(t * 0.5);
+  const xy_osc = R * 0.1 * Math.sin(t);
+
+  simData.Coms[0].set(x_base + xy_osc, y_base, z_osc1);
+  simData.Coms[1].set(-x_base, -y_base + xy_osc, -z_osc2);
+  simData.Coms[2].set(R * 0.6 * Math.cos(t * 1.5), R * 0.6 * Math.sin(t * 1.5), R * 0.4 * Math.sin(t * 0.7));
+}
+
+/* --- Forces and TDA --- */
+const tmpVec = new THREE.Vector3(), sumTmp = new THREE.Vector3(), CoNtmp = new THREE.Vector3();
+
+function getDDGAndBetaOneForce(index, pos, sh, data, ddgOut, betaOut){
+  const neighbors = sh.FindNeighborsSH(index, pos, data, DDG_RADIUS);
+  const nN = neighbors.length;
+  if (nN === 0) { ddgOut.set(0,0,0); betaOut.set(0,0,0); return [ddgOut,betaOut,false]; }
+  const total = tmpVec.set(0,0,0);
+  const targetDist = DDG_RADIUS / Math.sqrt(K_NEIGHBORS) * 0.7;
+  for (const nb of neighbors){
+    const npos = data[nb].Pos;
+    const v = npos.clone().sub(pos);
+    const dist = v.length();
+    const fm = DDG_SPRING_K * (dist - targetDist);
+    if (dist > 0.001){
+      total.add(v.normalize().multiplyScalar(fm * 0.5));
+    }
+  }
+  ddgOut.copy(total).multiplyScalar(1.0 / nN);
+
+  betaOut.set(0,0,0);
+  let active=false;
+  if (nN < K_NEIGHBORS - TDA_BETAONE_THRESHOLD){
+    sumTmp.set(0,0,0);
+    for (const nb of neighbors) sumTmp.add(data[nb].Pos);
+    const CoN = CoNtmp.copy(sumTmp).multiplyScalar(1.0 / nN);
+    betaOut.subVectors(CoN, pos).normalize().multiplyScalar(TDA_BETAONE_FORCEK);
+    active = true;
+  }
+  return [ddgOut, betaOut, active];
+}
+
+function getSphereSpringForce(pos, center, radius, out){
+  const v = out.subVectors(pos, center);
+  const d = v.length();
+  if (d < 0.001) return out.set(0,0,0);
+  const dir = v.normalize();
+  const f = SPRING_STRENGTH * (d - radius);
+  return dir.multiplyScalar(-f);
+}
+
+function getInterSphereRepulsion(pos, otherCenter){
+  const v = pos.clone().sub(otherCenter);
+  const d = v.length();
+  if (d > REPULSION_DIST_CHECK) return new THREE.Vector3(0,0,0);
+  const mag = REPULSION_K / (d*d + 1e-6);
+  return v.normalize().multiplyScalar(mag);
+}
+
+/* --- TopologicalAnalysisModule (per-sphere union-find) --- */
+function TopologicalAnalysisModule(data, ids, coms, connected, beta0){
+  // group indices by sphere
+  const groups = [[],[],[]];
+  for (let i=0;i<ids.length;i++) groups[ids[i]].push(i);
+
+  // compute com per sphere
+  const sumCom = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const counts = [0,0,0];
+  for (let i=0;i<data.length;i++){
+    const id = ids[i];
+    sumCom[id].add(data[i].Pos);
+    counts[id]++;
+  }
+  for (let i=0;i<NUM_SPHERES;i++){
+    if (counts[i] > 0) coms[i].copy(sumCom[i]).multiplyScalar(1.0 / counts[i]);
+    else coms[i].set(0,0,0);
+  }
+
+  for (let sid=0; sid<NUM_SPHERES; sid++){
+    const g = groups[sid];
+    if (g.length <= 1) { connected[sid]=true; beta0[sid]=1; continue; }
+    const indexMap = new Map();
+    for (let li=0; li<g.length; li++) indexMap.set(g[li], li);
+    const uf = new UnionFind(g.length);
+    const rSq = 0.25 * TDA_CLUSTER_RADIUS * TDA_CLUSTER_RADIUS;
+    for (let i=0;i<g.length;i++){
+      const gi = g[i];
+      const p1 = data[gi].Pos;
+      for (let j=i+1;j<g.length;j++){
+        const gj = g[j];
+        const p2 = data[gj].Pos;
+        if (p1.distanceToSquared(p2) < rSq) uf.Union(i,j);
+      }
+    }
+    const roots = new Set();
+    for (let i=0;i<g.length;i++) roots.add(uf.Find(i));
+    beta0[sid] = roots.size;
+    connected[sid] = (roots.size <= 1);
+  }
+}
+
+/* --- Main physics update (per frame) --- */
+function updateParticles(dt){
+  const dampingMul = 1.0 - TDA_DAMPING;
+  updateSphereCenters(dt);
+  const actualCOMs = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  TopologicalAnalysisModule(simData.Particles, simData.ParticleID, actualCOMs, simData.Connected, simData.Beta0);
+
+  const sh = new SpatialHash(simData.Particles, DDG_RADIUS);
+  const localBetaOneCounts = [0,0,0];
+
+  // temp vectors reused
+  const tempDDG = new THREE.Vector3(), tempBeta = new THREE.Vector3(), tempCenter = new THREE.Vector3();
+  const tempRep = new THREE.Vector3(), tempTDA = new THREE.Vector3(), tempAcc = new THREE.Vector3();
+
+  for (let i=0;i<PARTICLE_COUNT;i++){
+    const p = simData.Particles[i];
+    const pos = p.Pos;
+    const sid = simData.ParticleID[i];
+    const targetCenter = simData.Coms[sid];
+    const isConnected = simData.Connected[sid];
+
+    const [ddgForce, betaForce, betaActive] = getDDGAndBetaOneForce(i,pos,sh,simData.Particles,tempDDG,tempBeta);
+    if (betaActive) localBetaOneCounts[sid]++;
+
+    const centerForce = getSphereSpringForce(pos, targetCenter, SPHERE_RADIUS, tempCenter);
+    const tdaForce = tempTDA.set(0,0,0);
+    if (!isConnected){
+      const actual = actualCOMs[sid];
+      const distTo = actual.distanceTo(pos);
+      tdaForce.subVectors(actual, pos).normalize().multiplyScalar(TDA_RESTORE_FORCE * (1.0 + distTo / SPHERE_RADIUS));
+    }
+    const repulsion = tempRep.set(0,0,0);
+    for (let other=0; other<NUM_SPHERES; other++){
+      if (other === sid) continue;
+      repulsion.add(getInterSphereRepulsion(pos, simData.Coms[other]));
+    }
+
+    tempAcc.copy(ddgForce).add(centerForce).add(tdaForce).add(repulsion).add(betaForce);
+    p.Vel.add(tempAcc.multiplyScalar(dt));
+    p.Vel.multiplyScalar(dampingMul);
+    p.Pos.add(p.Vel.clone().multiplyScalar(dt));
+  }
+
+  // aggregate beta1
+  for (let id=0; id<NUM_SPHERES; id++){
+    const totalInSphere = PARTICLE_COUNT / NUM_SPHERES;
+    simData.Beta1[id] = (localBetaOneCounts[id] > totalInSphere * BETAONE_PARTICLE_RATIO) ? 1 : 0;
+  }
+
+  // periodic logging
+  logTimer += dt;
+  if (logTimer >= LOG_INTERVAL){
+    logTimer = 0;
+    logPoincare();
+  }
+
+  // update center markers
+  for (let i=0;i<centerMarkers.length;i++){
+    centerMarkers[i].position.copy(simData.Coms[i]);
+    centerMarkers[i].visible = showCenters;
+  }
+}
+
+/* --- Logging --- */
+function logPoincare(){
+  const colors = ['Red','Blue','Green'];
+  console.log('--- Topological Signature (P(x) ≈ b0 + b1 x) ---');
+  for (let i=0;i<NUM_SPHERES;i++){
+    const b0 = simData.Beta0[i], b1 = simData.Beta1[i];
+    let poly = ''+b0;
+    if (b1>0) poly += ' + ' + b1 + ' x';
+    let status = 'Ideal';
+    if (b0 > 1) status = 'CRITICAL (Fragmented)';
+    else if (b1 > 0) status = 'WARNING (Thin-Spot)';
+    console.log(`[${colors[i]}] P(x) = ${poly} | ${status}`);
+  }
+}
+
+/* --- Camera controls + input handlers --- */
+function updateCamera(){
+  if (autoOrbit){
+    azimuth += 0.0009 * orbitSpeed; // slow auto rotation when enabled
+  }
+  const x = distanceCam * Math.cos(elevation) * Math.sin(azimuth);
+  const y = distanceCam * Math.sin(elevation);
+  const z = distanceCam * Math.cos(elevation) * Math.cos(azimuth);
+  camera.position.set(x + cameraTarget.x, y + cameraTarget.y, z + cameraTarget.z);
+  camera.lookAt(cameraTarget);
+  camera.updateProjectionMatrix();
+}
+
+function onMouseDown(e){ if (e.button === 0){ dragging=true; lastX=e.clientX; lastY=e.clientY; } }
+function onMouseUp(e){ dragging=false; }
+function onMouseMove(e){ if (!dragging) return; const dx = e.clientX - lastX; const dy = e.clientY - lastY; lastX=e.clientX; lastY=e.clientY; azimuth -= dx * 0.005; elevation -= dy * 0.005; elevation = Math.max(-1.4, Math.min(1.4, elevation)); }
+function onWheel(e){ distanceCam += e.deltaY * 0.5; distanceCam = Math.max(100, Math.min(3000, distanceCam)); }
+
+/* --- main animation loop --- */
+function animate(){
+  requestAnimationFrame(animate);
+  const now = performance.now() / 1000;
+  let dt = now - prevTime;
+  prevTime = now;
+  if (dt > 0.05) dt = 0.05;
+
+  updateParticles(dt);
+  updateParticleBuffers();
+  updateCamera();
+  renderer.render(scene, camera);
+}
+
+/* --- GUI behavior (custom inline) --- */
+(function wireGui(){
+  const toggleCenters = document.getElementById('toggle-centers');
+  const toggleOrbit = document.getElementById('toggle-orbit');
+  const particleRange = document.getElementById('particle-range');
+  const pcVal = document.getElementById('pc-val');
+  const applyCount = document.getElementById('apply-count');
+  const resetBtn = document.getElementById('reset-sim');
+  const centerBtn = document.getElementById('center-view');
+
+  function setToggle(el, v){
+    if (v) el.classList.add('on'); else el.classList.remove('on');
+  }
+
+  // initial UI state
+  setToggle(toggleCenters, showCenters);
+  setToggle(toggleOrbit, autoOrbit);
+  pcVal.textContent = PARTICLE_COUNT;
+  particleRange.value = PARTICLE_COUNT;
+
+  // toggle clicks
+  toggleCenters.addEventListener('click', ()=> {
+    showCenters = !showCenters;
+    setToggle(toggleCenters, showCenters);
+    for (const m of centerMarkers) m.visible = showCenters;
+  });
+
+  toggleOrbit.addEventListener('click', ()=> {
+    autoOrbit = !autoOrbit;
+    setToggle(toggleOrbit, autoOrbit);
+  });
+
+  // range updates
+  particleRange.addEventListener('input', ()=> {
+    pcVal.textContent = particleRange.value;
+  });
+
+  applyCount.addEventListener('click', ()=> {
+    const newCount = parseInt(particleRange.value);
+    if (newCount !== PARTICLE_COUNT){
+      PARTICLE_COUNT = newCount;
+      document.getElementById('nParticles').textContent = PARTICLE_COUNT;
+      // reinit sim with new particle count
+      resetSimulation();
+    }
+  });
+
+  resetBtn.addEventListener('click', ()=> {
+    resetSimulation();
+  });
+
+  centerBtn.addEventListener('click', ()=> {
+    // compute global COM
+    const g = new THREE.Vector3(0,0,0);
+    for (let i=0; i<simData.Particles.length; i++) g.add(simData.Particles[i].Pos);
+    g.multiplyScalar(1.0 / simData.Particles.length);
+    cameraTarget.copy(g);
+    // bring camera a bit closer for good framing
+    distanceCam = Math.max(200, Math.min(distanceCam, 1200));
+  });
+
+  // keyboard shortcuts
+  window.addEventListener('keydown', (e)=> {
+    const key = e.key;
+    if (key === 'w' || key === 'W') distanceCam = Math.max(80, distanceCam - 20);
+    if (key === 's' || key === 'S') distanceCam = Math.min(5000, distanceCam + 20);
+    if (key === 'a' || key === 'A') azimuth -= 0.08;
+    if (key === 'd' || key === 'D') azimuth += 0.08;
+    if ((e.ctrlKey || e.metaKey) && (key === 'g' || key === 'G')) {
+      // center view
+      const g = new THREE.Vector3(0,0,0);
+      for (let i=0;i<simData.Particles.length;i++) g.add(simData.Particles[i].Pos);
+      g.multiplyScalar(1.0 / simData.Particles.length);
+      cameraTarget.copy(g);
+      distanceCam = Math.max(200, Math.min(distanceCam, 1200));
+    }
+  });
+
+  // mouse interactions wired to renderer canvas
+  window.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mouseup', onMouseUp);
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('wheel', onWheel, {passive:true});
+})();
+
+/* --- bootstrap initial sim & run --- */
+function start(){
+  resetSimulation(); // creates simData, scene, buffers
+  // attach DOM events for camera / interactions (already done by GUI wiring)
+  prevTime = performance.now() / 1000;
+  animate();
+}
+
+// start
+start();
+
+</script>
+</body>
+</html>
